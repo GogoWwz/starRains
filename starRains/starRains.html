@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>流星雨</title>
+</head>
+<body>
+	<canvas id="cvs"></canvas>
+	<script src="jquery-3.2.1.min.js"></script>
+	<script>
+		"use strict";
+		$((()=>{
+			let stars=800;//星星数量
+			let rains=20;//流星雨数量
+			let starsArr=[];//盛放星星的数组
+			let rainsArr=[];//盛方流行的数组
+			let cvs=$(`#cvs`)[0];//获取画布，注意此时获取的是jquery对象
+			//设置画布宽高为浏览器宽高，背景颜色
+			cvs.width=window.innerWidth;
+			cvs.height=window.innerHeight;
+			cvs.style.background="#000";
+			//获绘画环境,制定绘制类型为2d注意这里用jq对象是无法获得getContext()方法的
+			let ctx=cvs.getContext(`2d`);
+
+			/**
+			*定义一个星星类
+			*/
+			class Star{	//一定要在创建实例对象前定义，否则会报错,不知道是不是严格模式的影响
+				//构造函数，包含星星的属性:x,y,文本(.来代替星星),颜色(初始为白色)			
+				constructor(){
+					this.x=Math.random()*window.innerWidth;
+					this.y=Math.random()*5000;//这个参数进过调整是最舒服的，用innerHeight会导致太密了
+					this.text=`.`;
+					this.color=`#fff`;
+				}
+				//星星的功能:随机生成颜色,将自身绘制,闪烁
+				getStarColor(){
+					this.color=Math.random()<0.5?`#333`:`#fff`;
+				}
+				drawStar(){
+					ctx.fillStyle=this.color;
+					ctx.fillText(this.text,this.x,this.y);
+				}
+			}
+		
+			/**
+			*星星闪烁动画，利用定时器切换颜色来模拟
+			*/
+			function playStar(){
+				for(let i=0;i<stars;i++){//让所有星星都闪烁一次
+						starsArr[i].getStarColor();
+						starsArr[i].drawStar();
+				}
+				setTimeout(playStar,100);//每100毫秒执行一次，则不间断闪烁
+			}
+
+			/**
+			*定义一个流星雨类
+			*/
+			class Rain{
+				//构造函数，初始化流星的各项属性
+				constructor(){
+					this.x=-1;//横坐标
+					this.y=-1;//纵坐标
+					this.length=-1;//长度
+					this.angle=30;//角度
+					this.width=-1;//宽度
+					this.height=-1;//高度
+					this.speed=1;//速度
+					this.offset_x=-1;//横轴偏移量
+					this.offset_y=-1;//纵轴偏移量
+					this.alpha=0;//透明度
+					this.color1=``;//流星中段的颜色
+					this.color2=``;//流星末段的颜色
+				}
+				
+				//流星的功能
+
+				/**
+				*获得随机坐标
+				*/
+				getPos(){
+					this.x=Math.random()*window.innerWidth;
+					this.y=Math.random()*window.innerHeight;
+				}
+					
+				/**
+				*获取中段和末段颜色
+				*/
+				getRainColor(){
+					let a=Math.ceil(Math.random()*255)//获取1~255的随机颜色值
+					this.color1=`rgba(${a},${a},${a},1)`;//中段颜色
+					this.color2=`#000`;//末段颜色
+				}
+				/**
+				*将自身初始化
+				*/
+				initRain(){
+					this.getPos();//获得位置
+					this.alpha=1;//获得透明度
+					this.getRainColor();//获得中段和末段颜色
+					this.length=Math.random()*80+150;//获得长度,范围为[150,230),因为每个流星长度不同
+					this.angle=30;//获得倾斜角
+					this.speed=Math.ceil(Math.random()+0.5);//获得速度，范围为[1,2]
+					//获取高度和宽度
+					let cos=Math.cos(this.angle/180*Math.PI);
+					let sin=Math.sin(this.angle/180*Math.PI);
+					this.width=this.length*cos;//获取宽度，通过长度乘以余弦值
+					this.height=this.length*sin;//获取高度，通过长度乘以正弦值
+					this.offset_x=this.speed*cos;//获得横向偏移量
+					this.offset_y=this.speed*sin;//获得纵向偏移量
+				}
+
+				/**
+				*每次位移后计算自身坐标
+				*/
+				countPos(){
+					//因为是往坐下落下，所以x减小，y增加
+					this.x=this.x-this.offset_x;
+					this.y=this.y+this.offset_y;
+				}
+
+				/**
+				*将自身重新绘制
+				*/
+				drawRain(){
+					//每次将原始画布的坐标系存储下来，因为每次坐标的偏移都是相对原来的画布坐标的
+					//而实际上，画布上的元素的每次偏移、旋转、缩放的其实都是画布的坐标系
+					//save()会往图层栈中压入一个保存着此时画布状态的图层，
+					//在画完之后，restore()会将栈顶的图层取出，那么，每次重绘就都是在原来的画布的坐标系上进行
+					//这样就不会造成图像的失败
+					//如果不进行这个操作，那么每次执行移动函数后重新计算坐标和重绘时，都是在现有的坐标系上进行
+					//会造成有些流星的拖尾，清楚时坐标出错
+					ctx.save();
+					ctx.beginPath();//开始路径
+					ctx.lineWidth=1;//路径宽度
+					ctx.globalAlpha=this.alpha;//设置透明度
+					//创建线性渐变笔触，达到流星渐暗效果,四个参数为起点坐标和终点坐标
+					let line=ctx.createLinearGradient(this.x,this.y,this.x+this.width,this.y-this.height);
+					//设置分段颜色,第一个参数为[0,1]之间的，表示每段颜色开始的位置
+					line.addColorStop(0,`#fff`);
+					line.addColorStop(0.3,this.color1);
+					line.addColorStop(0.6,this.color2);
+					ctx.strokeStyle=line;//设置笔触渐变，用渐变进行填充
+					ctx.moveTo(this.x,this.y);//开始用画笔进行画线，移动到流星生成处
+					ctx.lineTo(this.x+this.width,this.y-this.height);//进行画线
+					ctx.stroke();//绘制路径
+					ctx.restore();//读取预存的原先画布的坐标系
+				}
+
+				/**
+				*流星移动
+				*/
+				move(){
+					//这里就需要公式进行清除
+					//首先，速度为[1,2]，根据正弦值和余弦值的范围，那么横向偏移和纵向偏移的范围为[0,2],
+					//那么，以尾部为参照(因为要清除的是尾部)
+					//所以，偏移后尾部的坐标为:this.x+this.width-this.offset_x,this.y-this.height+this.offset_y
+					//但是注意，是通过清除矩形来清楚尾部的，所以左上角的纵坐标坐标为便宜前流星状态的纵坐标,
+					//那么,此时坐标就应为:this.x+this.width-this.offfset_x,this.y-this.height
+					//而且清除的范围也就是宽高应该为:this.offset_x,this.offset_y;
+					//但是这样会出现一个问题，那就是清除范围太短，因为本位置也是相当于上一次位置的偏移
+					//会导致尾部的虚影太长，所以每次清除要连带上一次偏移的大小也一并清除，
+					//方案就是:将清除的矩形的起点往左上挪3，再将清除的大小定为偏移量加5，因为偏移的方位是[0,2]
+					//太大也不行，比如将起点往左上移5，清除的大小定位7
+					//这样会影响到流星的头部，导致有些流星的头部不远处有断点
+					//经过各种数据测试,还是如下方案效果最佳
+					let x=this.x+this.width-this.offset_x;
+					let y=this.y-this.height;
+					ctx.clearRect(x-3,y-3,this.offset_x+5,this.offset_y+5);
+					this.countPos();//重新计算坐标
+					this.drawRain();//将偏移后的流星重新绘制
+				}
+			}
+			
+			/**
+			*播放流星动画
+			*/
+			function playRains(){
+				for(let i=0;i<rains;i++){
+						let rain=rainsArr[i];
+						rain.move();
+						//出界判断，哪颗超出，清除并为该位置的数组重新添加一颗流星
+						if(rain.y>window.innerHeight){
+								ctx.clearRect(rain.x,rain.y-rain.height,rain.width,rain.height);
+								rainsArr[i]=new Rain();
+								rainsArr[i].initRain();
+						}
+				}
+				setTimeout(playRains,2);
+			}
+
+			//加载星星和流星
+			for(let i=0;i<stars;i++){
+				let star=new Star();
+				star.getStarColor();
+				star.drawStar();
+				starsArr.push(star);
+			}
+
+			for(let i=0;i<rains;i++){
+					let rain=new Rain();
+					rain.initRain();
+					rain.drawRain();
+					rainsArr.push(rain);
+			}
+
+			playStar();//星星加载完成，开始闪烁
+			playRains();//流星加载完成，开始下落
+		})());
+		
+	
+	</script>
+</body>
+</html>
+
